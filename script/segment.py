@@ -8,20 +8,8 @@ from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2 import model_zoo
 
-# Detailed descriptions included in the code
-
 
 def load_images_from_folder(folder, suffix):
-    """
-    Loads images from the specified folder with a given suffix.
-
-    Args:
-        folder (str): Path to the folder containing images.
-        suffix (str): Suffix of the image files to load.
-
-    Returns:
-        list: List of image file paths.
-    """
     return [
         os.path.join(folder, filename)
         for filename in os.listdir(folder)
@@ -30,53 +18,21 @@ def load_images_from_folder(folder, suffix):
 
 
 def resize_image(image, size):
-    """
-    Resizes the image to the specified size.
-
-    Args:
-        image (PIL.Image): The image to resize.
-        size (tuple): The target size (width, height).
-
-    Returns:
-        PIL.Image: The resized image.
-    """
     return image.resize(size, Image.LANCZOS)
 
 
 def setup_predictor(model_name, score_thresh):
-    """
-    Sets up the Detectron2 predictor with the specified model and score threshold.
-
-    Args:
-        model_name (str): Name of the pre-trained Detectron2 model to use.
-        score_thresh (float): Score threshold for predictions.
-
-    Returns:
-        DefaultPredictor: The Detectron2 predictor.
-    """
     cfg = get_cfg()
     cfg.MODEL.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     cfg.merge_from_file(model_zoo.get_config_file(model_name))
     cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(model_name)
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = score_thresh  # set threshold for this model
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = score_thresh
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 80  # COCO dataset has 80 classes
     predictor = DefaultPredictor(cfg)
     return predictor
 
 
 def is_centered(box, image_width, image_height, tolerance=0.35):
-    """
-    Checks if the bounding box is relatively centered in the image.
-
-    Args:
-        box (tuple): Bounding box coordinates (x1, y1, x2, y2).
-        image_width (int): Width of the image.
-        image_height (int): Height of the image.
-        tolerance (float): Tolerance for defining the central region. Default is 0.35.
-
-    Returns:
-        bool: True if the box is centered, False otherwise.
-    """
     x1, y1, x2, y2 = box
     box_center_x = (x1 + x2) / 2
     box_center_y = (y1 + y2) / 2
@@ -94,19 +50,6 @@ def is_centered(box, image_width, image_height, tolerance=0.35):
 def segment_instance(
     rgb_image, predictor, initial_score_thresh, min_score_thresh, image_id
 ):
-    """
-    Performs instance segmentation on the RGB image using Detectron2 with dynamic threshold adjustment.
-
-    Args:
-        rgb_image (PIL.Image): The RGB image.
-        predictor (DefaultPredictor): The Detectron2 predictor.
-        initial_score_thresh (float): Initial score threshold for predictions.
-        min_score_thresh (float): Minimum score threshold for predictions.
-        image_id (str): The ID of the current image.
-
-    Returns:
-        np.ndarray: The mask for the "potted plant" class or bounding box mask if potted plant is not found.
-    """
     image_array = np.array(rgb_image)
     image_height, image_width = image_array.shape[:2]
     score_thresh = initial_score_thresh
@@ -130,9 +73,6 @@ def segment_instance(
                 centered_boxes.append(box)
 
         score_thresh -= 0.1
-        print(
-            f"No potted plant detected in the center at threshold {score_thresh + 0.05:.2f}. Trying again with {score_thresh:.2f}..."
-        )
 
     if centered_boxes:
         print(
@@ -158,20 +98,12 @@ def segment_instance(
 
 
 def apply_mask(image, mask):
-    """
-    Applies the mask to the image, retaining pixel values in the masked area and setting the unmasked area to 0.
-
-    Args:
-        image (np.ndarray): The image to be masked.
-        mask (np.ndarray): The mask to apply.
-
-    Returns:
-        np.ndarray: The masked image.
-    """
+    masked_image = np.zeros_like(image)
     if image.ndim == 3:  # RGB image
-        masked_image = image * mask[:, :, None]
+        for i in range(3):  # Apply the mask to each channel
+            masked_image[:, :, i] = np.where(mask == 1, image[:, :, i], 0)
     else:  # Depth image
-        masked_image = image * mask
+        masked_image = np.where(mask == 1, image, 0)
     return masked_image
 
 
@@ -185,8 +117,11 @@ def save_image(image, output_folder, image_id, suffix):
         image_id (str): The ID for naming the image file.
         suffix (str): The suffix for naming the image file.
     """
-    output_path = os.path.join(output_folder, f"{image_id}_{suffix}.png")
-    Image.fromarray(image.astype(np.uint8)).save(output_path)
+    if suffix:
+        output_path = os.path.join(output_folder, f"{image_id}{suffix}.png")
+    else:
+        output_path = os.path.join(output_folder, f"{image_id}.png")
+    Image.fromarray(image).save(output_path)
 
 
 def main(
@@ -211,11 +146,13 @@ def main(
     rgb_images = load_images_from_folder(rgb_folder, ".png")
     depth_images = load_images_from_folder(depth_folder, "_depth.png")
 
-    rgb_output_folder = os.path.join(output_folder, "masked_rgb")
-    depth_output_folder = os.path.join(output_folder, "masked_depth")
+    masked_rgb_output_folder = os.path.join(output_folder, "masked_rgb")
+    masked_depth_output_folder = os.path.join(output_folder, "masked_depth")
+    mask_output_folder = os.path.join(output_folder, "mask")
 
-    os.makedirs(rgb_output_folder, exist_ok=True)
-    os.makedirs(depth_output_folder, exist_ok=True)
+    os.makedirs(masked_rgb_output_folder, exist_ok=True)
+    os.makedirs(masked_depth_output_folder, exist_ok=True)
+    os.makedirs(mask_output_folder, exist_ok=True)
 
     predictor = setup_predictor(model_name, initial_score_thresh)
 
@@ -228,7 +165,7 @@ def main(
             continue
 
         rgb_image = Image.open(rgb_image_path).convert("RGB")
-        depth_image = Image.open(depth_image_path).convert("L")
+        depth_image = Image.open(depth_image_path)
 
         # Resize depth image to match the RGB image size
         depth_image = resize_image(depth_image, rgb_image.size)
@@ -243,8 +180,10 @@ def main(
         masked_rgb_image = apply_mask(rgb_array, mask)
         masked_depth_image = apply_mask(depth_array, mask)
 
-        save_image(masked_rgb_image, rgb_output_folder, image_id, "masked_rgb")
-        save_image(masked_depth_image, depth_output_folder, image_id, "masked_depth")
+        # Save the masked RGB and depth images along with the mask
+        save_image(masked_rgb_image, masked_rgb_output_folder, image_id, "")
+        save_image(masked_depth_image, masked_depth_output_folder, image_id, "_depth")
+        save_image(mask * 255, mask_output_folder, image_id, "_mask")
 
 
 if __name__ == "__main__":

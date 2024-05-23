@@ -15,7 +15,7 @@ import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from dataset import filter_json_data, TomatoDataset
-from model import TomatoNet, TomatoViT
+from model import TomatoNet, TomatoViT, TomatoCombo
 from train import train_model, evaluate_model, plot_metrics
 from transforms import transform
 
@@ -35,6 +35,12 @@ def main():
         type=str,
         required=True,
         help="Path to the folder containing depth images.",
+    )
+    parser.add_argument(
+        "--pcd_folder",
+        type=str,
+        required=True,
+        help="Path to the folder containing point cloud files.",
     )
     parser.add_argument(
         "--json_path",
@@ -69,13 +75,6 @@ def main():
         default=4,
         help="Number of steps to accumulate gradients before updating weights.",
     )
-    parser.add_argument(
-        "--model_type",
-        type=str,
-        default="resnet50",
-        choices=["resnet50", "vit"],
-        help="Model architecture to use",
-    )
     args = parser.parse_args()
 
     # Filter the JSON data and get the filtered image IDs
@@ -90,6 +89,7 @@ def main():
     dataset = TomatoDataset(
         args.rgb_folder,
         args.depth_folder,
+        args.pcd_folder,
         filtered_data,
         filtered_image_ids,
         transform=transform,
@@ -104,17 +104,11 @@ def main():
     # Initialize the model, loss function, optimizer, and learning rate scheduler
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Model selection for TomatoNet(ResNet50) or ViT(vision transformer)
-    # model = TomatoNet(num_traits=4).to(device)
-    if args.model_type == "resnet50":
-        model = TomatoNet(num_traits=4).to(device)
-    elif args.model_type == "vit":
-        model = TomatoViT(num_traits=4).to(device)
+    # Model selection for TomatoCombo
+    model = TomatoCombo(num_traits=4).to(device)
 
     criterion = nn.HuberLoss()
-    optimizer = optim.AdamW(
-        model.parameters(), lr=0.0001, weight_decay=0.01
-    )  # Adjusted learning rate and added weight decay
+    optimizer = optim.AdamW(model.parameters(), lr=0.0001, weight_decay=0.01)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", patience=5, factor=0.5, verbose=True
     )

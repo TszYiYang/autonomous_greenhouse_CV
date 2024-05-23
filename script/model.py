@@ -1,12 +1,3 @@
-"""
-model.py
-
-This module defines the TomatoNet model for predicting plant traits from RGBD images.
-
-Classes:
-- TomatoNet: A neural network model that takes 4-channel RGBD images as input and predicts plant traits.
-"""
-
 import torch
 import torch.nn as nn
 import torchvision.models as models
@@ -40,3 +31,40 @@ class TomatoViT(nn.Module):
         cls_output = sequence_output[:, 0, :]  # Take the [CLS] token output
         out = self.fc(cls_output)
         return out
+
+
+class TomatoPCD(nn.Module):
+    def __init__(self, input_dim=6, output_dim=256):
+        super(TomatoPCD, self).__init__()
+        self.fc1 = nn.Linear(input_dim, 64)
+        self.fc2 = nn.Linear(64, 128)
+        self.fc3 = nn.Linear(128, output_dim)
+        self.fc_bn1 = nn.BatchNorm1d(64)
+        self.fc_bn2 = nn.BatchNorm1d(128)
+        self.fc_bn3 = nn.BatchNorm1d(output_dim)
+
+    def forward(self, x):
+        x = torch.relu(self.fc_bn1(self.fc1(x)))
+        x = torch.relu(self.fc_bn2(self.fc2(x)))
+        x = self.fc_bn3(self.fc3(x))
+        x = torch.max(x, 1, keepdim=True)[0]
+        return x.squeeze(1)
+
+
+class TomatoCombo(nn.Module):
+    def __init__(self, num_traits):
+        super(TomatoCombo, self).__init__()
+        self.vit_model = TomatoViT(num_traits=num_traits)
+        self.pcd_model = TomatoPCD(input_dim=6, output_dim=256)
+        self.fc1 = nn.Linear(
+            256 + 768, 512
+        )  # Adjust the size based on concatenated features
+        self.fc2 = nn.Linear(512, num_traits)
+
+    def forward(self, original_rgbd_images, point_cloud):
+        img_features = self.vit_model(original_rgbd_images)
+        point_cloud_features = self.pcd_model(point_cloud)
+        combined_features = torch.cat((img_features, point_cloud_features), dim=1)
+        x = torch.relu(self.fc1(combined_features))
+        outputs = self.fc2(x)
+        return outputs
