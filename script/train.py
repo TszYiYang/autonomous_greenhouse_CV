@@ -1,17 +1,3 @@
-"""
-train.py
-
-This module contains the training and validation logic for the TomatoNet model. 
-It includes functions for computing metrics, training the model, evaluating the model, and plotting training results.
-
-Functions:
-- compute_metrics: Computes evaluation metrics for the model's predictions.
-- train_model: Trains and validates the model, and saves checkpoints at regular intervals.
-- evaluate_model: Evaluates the model on the test set.
-- plot_metrics: Plots the training and validation losses and other metrics.
-
-"""
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -28,6 +14,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
+
+def get_current_lr(optimizer):
+    for param_group in optimizer.param_groups:
+        return param_group['lr']
+
+
+def check_for_nans(tensor, name="tensor"):
+    if torch.isnan(tensor).any():
+        raise ValueError(f"NaN values found in {name}")
 
 
 def compute_metrics(outputs, labels, threshold=0.5):
@@ -152,12 +149,16 @@ def train_model(
     scaler = GradScaler()
     best_val_loss = float("inf")
     early_stopping_counter = 0
-    early_stopping_patience = 10
+    early_stopping_patience = 50
 
     train_losses = []
     val_losses = []
     train_metrics = []
     val_metrics = []
+
+    # Initialize TensorBoard writer
+    log_dir = "runs/experiment_" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    writer = SummaryWriter(log_dir)
 
     os.makedirs(os.path.join(results_dir, "checkpoints"), exist_ok=True)
     os.makedirs(os.path.join(results_dir, "models"), exist_ok=True)
@@ -189,7 +190,7 @@ def train_model(
                 print(
                     f"Shapes - RGBD images: {rgbd_image.shape}, Point Cloud: {point_cloud.shape}, Labels: {labels.shape}"
                 )
-
+          
             with torch.cuda.amp.autocast():
                 outputs = model(rgbd_image, point_cloud)
                 loss = criterion(outputs, labels)
@@ -244,6 +245,18 @@ def train_model(
         print(
             f"Epoch [{epoch+1}/{num_epochs}], Training Loss: {epoch_loss:.4f}, MSE: {train_mse:.4f}, MAE: {train_mae:.4f}, Accuracy: {train_accuracy:.4f}, F1: {train_f1:.4f}, Precision: {train_precision:.4f}, Recall: {train_recall:.4f}"
         )
+
+        # Log training metrics to TensorBoard
+        writer.add_scalar('Loss/Train', epoch_loss, epoch)
+        writer.add_scalar('MSE/Train', train_mse, epoch)
+        writer.add_scalar('MAE/Train', train_mae, epoch)
+        writer.add_scalar('Accuracy/Train', train_accuracy, epoch)
+        writer.add_scalar('F1/Train', train_f1, epoch)
+        writer.add_scalar('Precision/Train', train_precision, epoch)
+        writer.add_scalar('Recall/Train', train_recall, epoch)
+        
+        # Log learning rate to TensorBoard
+        writer.add_scalar('Learning Rate', get_current_lr(optimizer), epoch)
 
         model.eval()
         val_loss = 0.0
@@ -304,6 +317,15 @@ def train_model(
             f"Epoch [{epoch+1}/{num_epochs}], Validation Loss: {val_loss:.4f}, MSE: {val_mse:.4f}, MAE: {val_mae:.4f}, Accuracy: {val_accuracy:.4f}, F1: {val_f1:.4f}, Precision: {val_precision:.4f}, Recall: {val_recall:.4f}"
         )
 
+        # Log validation metrics to TensorBoard
+        writer.add_scalar('Loss/Validation', val_loss, epoch)
+        writer.add_scalar('MSE/Validation', val_mse, epoch)
+        writer.add_scalar('MAE/Validation', val_mae, epoch)
+        writer.add_scalar('Accuracy/Validation', val_accuracy, epoch)
+        writer.add_scalar('F1/Validation', val_f1, epoch)
+        writer.add_scalar('Precision/Validation', val_precision, epoch)
+        writer.add_scalar('Recall/Validation', val_recall, epoch)
+
         scheduler.step(val_loss)
 
         if val_loss < best_val_loss:
@@ -336,6 +358,8 @@ def train_model(
     final_model_path = os.path.join(results_dir, "models", "tomato_model_final.pth")
     torch.save(model.state_dict(), final_model_path)
     print(f"Final model saved to {final_model_path}")
+
+    writer.close()
 
     return train_losses, val_losses, train_metrics, val_metrics
 

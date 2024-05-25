@@ -75,6 +75,12 @@ def main():
         default=4,
         help="Number of steps to accumulate gradients before updating weights.",
     )
+    parser.add_argument(
+        "--pretrained_pointnet",
+        type=str,
+        default=None,
+        help="Path to the pre-trained PointNet weights."
+    )
     args = parser.parse_args()
 
     # Filter the JSON data and get the filtered image IDs
@@ -106,12 +112,14 @@ def main():
 
     # Model selection for TomatoCombo
     model = TomatoCombo(num_traits=4).to(device)
+    
+    if args.pretrained_pointnet:
+        model.pcd_model.load_pretrained_weights(args.pretrained_pointnet)
 
     criterion = nn.HuberLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=0.0001, weight_decay=0.01)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", patience=5, factor=0.5, verbose=True
-    )
+    optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, verbose=True)
+
 
     # Train the model
     train_losses, val_losses, train_metrics, val_metrics = train_model(
