@@ -8,7 +8,7 @@ import open3d as o3d
 from transforms import transform, point_cloud_transform
 
 
-def filter_json_data(json_path, rgb_folder, depth_folder):
+def filter_json_data(json_path, rgb_folder, depth_folder, pcd_folder=None):
     """
     Filters out data points with missing values in the ground truth JSON file.
 
@@ -16,6 +16,7 @@ def filter_json_data(json_path, rgb_folder, depth_folder):
     - json_path (str): Path to the JSON file containing ground truth labels.
     - rgb_folder (str): Path to the folder containing RGB images.
     - depth_folder (str): Path to the folder containing depth images.
+    - pcd_folder (str, optional): Path to the folder containing point cloud data (if applicable).
 
     Returns:
     - dict: Filtered data dictionary with no missing values.
@@ -26,6 +27,8 @@ def filter_json_data(json_path, rgb_folder, depth_folder):
 
     filtered_data = {}
     filtered_image_ids = []
+    total_points = len(data)
+    missing_value_points = 0
 
     for image_id, traits in data.items():
         if not any(
@@ -34,9 +37,25 @@ def filter_json_data(json_path, rgb_folder, depth_folder):
         ):
             rgb_path = os.path.join(rgb_folder, f"{image_id}.png")
             depth_path = os.path.join(depth_folder, f"{image_id}_depth.png")
-            if os.path.exists(rgb_path) and os.path.exists(depth_path):
-                filtered_data[image_id] = traits
-                filtered_image_ids.append(image_id)
+            if pcd_folder:
+                pcd_path = os.path.join(pcd_folder, f"{image_id}_pcd.pcd")
+                if (
+                    os.path.exists(rgb_path)
+                    and os.path.exists(depth_path)
+                    and os.path.exists(pcd_path)
+                ):
+                    filtered_data[image_id] = traits
+                    filtered_image_ids.append(image_id)
+            else:
+                if os.path.exists(rgb_path) and os.path.exists(depth_path):
+                    filtered_data[image_id] = traits
+                    filtered_image_ids.append(image_id)
+        else:
+            missing_value_points += 1
+
+    print(f"Total data points: {total_points}")
+    print(f"Data points with missing values filtered out: {missing_value_points}")
+    print(f"Remaining data points: {len(filtered_data)}")
 
     return filtered_data, filtered_image_ids
 

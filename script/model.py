@@ -81,9 +81,9 @@ class TomatoPCD(nn.Module):
         self.bn2 = nn.BatchNorm1d(128)
         self.fc3 = nn.Linear(128, 256)
         self.bn3 = nn.BatchNorm1d(256)
-        self.fc_final = nn.Linear(256 * 10000, output_dim)  # Flattened dimension
+        self.fc_final = nn.Linear(256 * 2048, output_dim)  # Flattened dimension
         self.bn_final = nn.BatchNorm1d(output_dim)
-        self.pool = nn.AdaptiveMaxPool1d(10000)  # Downsampling to 10,000 points
+        self.pool = nn.AdaptiveMaxPool1d(2048)  # Downsampling to 10,000 points
         self.dropout = nn.Dropout(0.5)
 
     def forward(self, x):
@@ -243,7 +243,7 @@ class TomatoComboVitTomatoPCD(nn.Module):
 
         batch_size = point_cloud.size(0)
         downsampled_point_cloud = F.adaptive_max_pool1d(
-            point_cloud.view(batch_size, 6, -1), output_size=10000
+            point_cloud.view(batch_size, 6, -1), output_size=2048
         )
         # print(f"Downsampled Point Cloud Shape: {downsampled_point_cloud.shape}")
 
@@ -294,7 +294,7 @@ class TomatoComboVitPointNet(nn.Module):
 
         batch_size = point_cloud.size(0)
         downsampled_point_cloud = F.adaptive_max_pool1d(
-            point_cloud.view(batch_size, 6, -1), output_size=10000
+            point_cloud.view(batch_size, 6, -1), output_size=2048
         )
         # print(f"Downsampled Point Cloud Shape: {downsampled_point_cloud.shape}")
 

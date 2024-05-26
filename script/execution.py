@@ -8,35 +8,7 @@ from torch.utils.data import DataLoader
 from model import TomatoNet, TomatoViT, TomatoComboVitTomatoPCD, TomatoComboVitPointNet
 from dataset import filter_json_data, TomatoDataset
 from transforms import transform, point_cloud_transform
-from train import train_model, evaluate_model, plot_metrics
-
-
-def filter_json_data(json_path, rgb_folder, depth_folder):
-    """
-    Filter the JSON data to ensure corresponding RGB and depth images exist.
-
-    Parameters:
-        json_path (str): Path to the JSON file containing the data.
-        rgb_folder (str): Path to the folder containing RGB images.
-        depth_folder (str): Path to the folder containing depth images.
-
-    Returns:
-        filtered_data (dict): The filtered data dictionary.
-        filtered_image_ids (list): List of filtered image IDs.
-    """
-    with open(json_path, "r") as f:
-        data = json.load(f)
-
-    filtered_data = {}
-    filtered_image_ids = []
-    for image_id, traits in data.items():
-        rgb_path = os.path.join(rgb_folder, f"{image_id}.png")
-        depth_path = os.path.join(depth_folder, f"{image_id}_depth.png")
-        if os.path.exists(rgb_path) and os.path.exists(depth_path):
-            filtered_data[image_id] = traits
-            filtered_image_ids.append(image_id)
-
-    return filtered_data, filtered_image_ids
+from train import train_model, plot_metrics
 
 
 def main():
@@ -117,8 +89,18 @@ def main():
 
     # Filter JSON data to ensure corresponding RGB and depth images exist
     filtered_data, filtered_image_ids = filter_json_data(
-        args.json_path, args.rgb_folder, args.depth_folder
+        args.json_path,
+        args.rgb_folder,
+        args.depth_folder,
+        (
+            args.pcd_folder
+            if args.model_type in ["combo_vit_tomatoPCD", "combo_vit_pointNet"]
+            else None
+        ),
     )
+
+    print(f"Total data points: {len(filtered_data)}")
+    print(f"Filtered image IDs: {len(filtered_image_ids)}")
 
     if args.model_type in ["combo_vit_tomatoPCD", "combo_vit_pointNet"]:
         dataset = TomatoDataset(
@@ -140,6 +122,7 @@ def main():
             point_cloud_transform=None,
             pcd_folder=None,
         )
+
     train_size = int(0.8 * len(dataset))
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = torch.utils.data.random_split(

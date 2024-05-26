@@ -102,6 +102,18 @@ def plot_metrics(train_losses, val_losses, train_metrics, val_metrics, results_d
     plt.savefig(os.path.join(results_dir, "plots", "mse.png"))
     plt.close()
 
+    train_rmse = [m[1] for m in train_metrics]
+    val_rmse = [m[1] for m in val_metrics]
+    plt.figure(figsize=(10, 5))
+    plt.plot(epochs, train_rmse, label="Training RMSE")
+    plt.plot(epochs, val_rmse, label="Validation RMSE")
+    plt.xlabel("Epochs")
+    plt.ylabel("Root Mean Squared Error")
+    plt.legend()
+    plt.title("Training and Validation RMSE")
+    plt.savefig(os.path.join(results_dir, "plots", "rmse.png"))
+    plt.close()
+
     train_mae = [m[2] for m in train_metrics]
     val_mae = [m[2] for m in val_metrics]
     plt.figure(figsize=(10, 5))
@@ -167,7 +179,7 @@ def train_model(
         scaler = GradScaler()
     best_val_loss = float("inf")
     early_stopping_counter = 0
-    early_stopping_patience = 50
+    early_stopping_patience = 15
 
     train_losses = []
     val_losses = []
