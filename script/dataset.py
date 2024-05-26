@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 from PIL import Image
 import numpy as np
 import open3d as o3d
-from transforms import transform
+from transforms import transform, point_cloud_transform
 
 
 def filter_json_data(json_path, rgb_folder, depth_folder):
@@ -48,10 +48,11 @@ class TomatoDataset(Dataset):
     Args:
     - rgb_folder (str): Path to the folder containing RGB images.
     - depth_folder (str): Path to the folder containing depth images.
-    - pcd_folder (str): Path to the folder containing point cloud data.
-    - filtered_data (dict): Filtered ground truth data.
-    - filtered_image_ids (list): List of filtered image IDs.
+    - json_data (dict): Filtered ground truth data.
+    - image_ids (list): List of filtered image IDs.
     - transform (callable, optional): A function/transform to apply to the images.
+    - point_cloud_transform (callable, optional): A function/transform to apply to the point cloud data.
+    - pcd_folder (str or None): Path to the folder containing point cloud data (if applicable, only for combo models).
 
     Methods:
     - __len__: Returns the length of the dataset.
@@ -62,26 +63,27 @@ class TomatoDataset(Dataset):
         self,
         rgb_folder,
         depth_folder,
-        pcd_folder,
-        filtered_data,
-        filtered_image_ids,
+        json_data,
+        image_ids,
         transform=None,
+        point_cloud_transform=None,
+        pcd_folder=None,
     ):
         self.rgb_folder = rgb_folder
         self.depth_folder = depth_folder
-        self.pcd_folder = pcd_folder
-        self.filtered_data = filtered_data
-        self.filtered_image_ids = filtered_image_ids
+        self.json_data = json_data
+        self.image_ids = image_ids
         self.transform = transform
+        self.point_cloud_transform = point_cloud_transform
+        self.pcd_folder = pcd_folder
 
     def __len__(self):
-        return len(self.filtered_image_ids)
+        return len(self.image_ids)
 
     def __getitem__(self, idx):
-        image_id = self.filtered_image_ids[idx]
+        image_id = self.image_ids[idx]
         rgb_path = os.path.join(self.rgb_folder, f"{image_id}.png")
         depth_path = os.path.join(self.depth_folder, f"{image_id}_depth.png")
-        pcd_path = os.path.join(self.pcd_folder, f"{image_id}_pcd.pcd")
 
         # Load images using PIL
         rgb_image = Image.open(rgb_path).convert("RGB")
@@ -90,27 +92,43 @@ class TomatoDataset(Dataset):
         rgb_array = np.array(rgb_image)
         depth_array = np.array(depth_image)
 
-        # Convert images to PyTorch tensors and apply transformations
-        rgb_image = np.transpose(rgb_array, (2, 0, 1))
-        depth_image = np.expand_dims(depth_array, axis=0)  # Add channel dimension
-        rgbd_image = np.concatenate((rgb_image, depth_image), axis=0)
+        rgb_image = np.transpose(
+            rgb_array, (2, 0, 1)
+        )  # Convert to [channels, height, width]
+        depth_image = np.expand_dims(
+            depth_array, axis=0
+        )  # Add channel dimension: [1, height, width]
+        rgbd_image = np.concatenate(
+            (rgb_image, depth_image), axis=0
+        )  # Combine RGB and Depth: [4, height, width]
 
         if self.transform:
             rgbd_image = self.transform(rgbd_image)
 
         rgbd_image = torch.tensor(rgbd_image, dtype=torch.float32)
+        # print(f"Processed RGBD image shape: {rgbd_image.shape}")
 
-        # Load point cloud from PCD file
-        if not os.path.exists(pcd_path):
-            raise FileNotFoundError(f"Point cloud file not found: {pcd_path}")
-        pcd = o3d.io.read_point_cloud(pcd_path)
-        point_cloud = np.asarray(pcd.points)
-        point_cloud_colors = np.asarray(pcd.colors)
-        point_cloud = np.concatenate((point_cloud, point_cloud_colors), axis=1)
-        point_cloud = torch.tensor(point_cloud, dtype=torch.float32)
+        # Load point cloud from PCD file if applicable
+        if self.pcd_folder:
+            pcd_path = os.path.join(self.pcd_folder, f"{image_id}_pcd.pcd")
+            if not os.path.exists(pcd_path):
+                raise FileNotFoundError(f"Point cloud file not found: {pcd_path}")
+            pcd = o3d.io.read_point_cloud(pcd_path)
+            point_cloud = np.asarray(pcd.points)
+            point_cloud_colors = np.asarray(pcd.colors)
+            point_cloud = np.concatenate((point_cloud, point_cloud_colors), axis=1)
+            # print(f"Original Point Cloud shape: {point_cloud.shape}")
+            if self.point_cloud_transform:
+                point_cloud = self.point_cloud_transform(point_cloud)
+            point_cloud = torch.tensor(point_cloud, dtype=torch.float32)
+            # print(f"Transformed Point Cloud shape: {point_cloud.shape}")
+        else:
+            point_cloud = torch.empty(0)
+            # print(f"No Point Cloud data available for image id: {image_id}")
 
         label = torch.tensor(
-            list(self.filtered_data[image_id].values()), dtype=torch.float32
+            list(self.json_data[image_id].values()), dtype=torch.float32
         )
+        # print(f"Label shape: {label.shape}")
 
         return rgbd_image, point_cloud, label
