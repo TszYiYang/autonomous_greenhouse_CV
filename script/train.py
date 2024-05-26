@@ -179,7 +179,7 @@ def train_model(
         scaler = GradScaler()
     best_val_loss = float("inf")
     early_stopping_counter = 0
-    early_stopping_patience = 15
+    early_stopping_patience = 20
 
     train_losses = []
     val_losses = []
