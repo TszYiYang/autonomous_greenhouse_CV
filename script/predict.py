@@ -33,11 +33,17 @@ def load_model(model_path, model_type, num_traits=4):
     else:
         raise ValueError("Unknown model type based on the provided model type")
 
-    # Load the state_dict
-    state_dict = torch.load(
+    # Load the checkpoint
+    checkpoint = torch.load(
         model_path,
         map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     )
+
+    # Load the state_dict
+    if "model_state_dict" in checkpoint:
+        state_dict = checkpoint["model_state_dict"]
+    else:
+        state_dict = checkpoint
 
     # Adapt the state_dict to the new model structure
     model_dict = model.state_dict()

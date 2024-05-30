@@ -313,3 +313,40 @@ class TomatoComboVitPointNet(nn.Module):
         outputs = self.fc2(x)
         # print(f"After fc2: {outputs.shape}")
         return outputs
+
+
+def count_learnable_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+if __name__ == "__main__":
+
+    num_traits = 4
+
+    # Initialize models (replace these with your actual model initializations)
+    resnet_model = TomatoNet(num_traits=num_traits)
+    vit_model = TomatoViT(num_traits=num_traits)
+    pointNet_model = PointNet(k=256)
+    tomatoPCD_model = TomatoPCD(input_dim=6, output_dim=256)
+    combo_vit_tomatoPCD_model = TomatoComboVitTomatoPCD(num_traits=num_traits)
+    combo_vit_pointNet_model = TomatoComboVitPointNet(num_traits=num_traits)
+
+    # Count and print learnable parameters for each model
+    print(
+        f"ResNet50 (TomatoNet) learnable parameters: {count_learnable_parameters(resnet_model)}"
+    )
+    print(
+        f"ViT (TomatoViT) learnable parameters: {count_learnable_parameters(vit_model)}"
+    )
+    print(
+        f"PointNet learnable parameters: {count_learnable_parameters(pointNet_model)}"
+    )
+    print(
+        f"TomatoPCD learnable parameters: {count_learnable_parameters(tomatoPCD_model)}"
+    )
+    print(
+        f"Combo ViT + TomatoPCD learnable parameters: {count_learnable_parameters(combo_vit_tomatoPCD_model)}"
+    )
+    print(
+        f"Combo ViT + PointNet learnable parameters: {count_learnable_parameters(combo_vit_pointNet_model)}"
+    )
